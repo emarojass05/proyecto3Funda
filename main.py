@@ -1,24 +1,33 @@
 # ===========================================================
-# main.py – Simulador RISC-V Pipeline Mejorado
+# main.py – Entrada del proyecto (GUI por defecto, CLI opcional)
 # ===========================================================
 
-from simulator.cpu import CPU
-from simulator.parser import load_program
+import sys
 
 # ===========================================================
-# Colores para la consola
+# Importar CPU y parser (soporta 'simulator' o 'simulacion')
 # ===========================================================
-RED = "\033[91m"
+try:
+    from simulator.cpu import CPU
+    from simulator.parser import load_program
+except Exception:
+    from simulacion.cpu import CPU
+    from simulacion.parser import load_program
+
+# ===========================================================
+# Colores para la consola (modo CLI)
+# ===========================================================
+RED   = "\033[91m"
 GREEN = "\033[92m"
-YELLOW = "\033[93m"
-BLUE = "\033[94m"
+YELLOW= "\033[93m"
+BLUE  = "\033[94m"
 RESET = "\033[0m"
 
 # ===========================================================
-# Función principal
+# Modo consola original
 # ===========================================================
 def main():
-    print(f"{YELLOW}=== SIMULADOR RISC-V PIPELINED ==={RESET}\n")
+    print(f"{YELLOW}=== SIMULADOR RISC-V PIPELINED (CLI) ==={RESET}\n")
 
     # Cargar programa desde carpeta examples/
     program = load_program("examples/program1.asm")
@@ -29,7 +38,7 @@ def main():
     ciclo = 1
     MAX_CICLOS = 30  # 🔸 límite para evitar bucles infinitos
 
-    while not cpu.halted and ciclo <= MAX_CICLOS:
+    while not getattr(cpu, "halted", False) and ciclo <= MAX_CICLOS:
         print(f"\n{BLUE}--- Ciclo {ciclo} ---{RESET}\n")
         cpu.step()
         ciclo += 1
@@ -44,7 +53,7 @@ def main():
     cpu.regs.dump()
 
     # Si la memoria tiene método dump, mostrarla
-    if hasattr(cpu.memory, "dump"):
+    if hasattr(cpu, "memory") and hasattr(cpu.memory, "dump"):
         print(f"\n{YELLOW}--- MEMORIA FINAL ---{RESET}")
         cpu.memory.dump()
     else:
@@ -52,9 +61,20 @@ def main():
 
     print(f"\n{GREEN}Programa finalizado correctamente.{RESET}")
 
-
 # ===========================================================
-# Punto de entrada
+# Punto de entrada: GUI por defecto, CLI con --cli
 # ===========================================================
 if __name__ == "__main__":
-    main()
+    if "--cli" in sys.argv:
+        # Forzar modo consola:
+        main()
+    else:
+        # Intentar abrir la GUI
+        try:
+            from gui.app import run as run_gui
+            run_gui()
+        except Exception as e:
+            # Fallback a CLI si la GUI no está disponible
+            print(f"{YELLOW}[Aviso]{RESET} No se pudo iniciar la GUI ({e}).")
+            print(f"{YELLOW}[Aviso]{RESET} Ejecutando en modo consola…\n")
+            main()
