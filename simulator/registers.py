@@ -14,7 +14,7 @@ class RegisterFile:
             self.regs[idx] = value
 
     # =======================================================
-    # ✅ Nuevo método para imprimir el estado de los registros
+    # Imprime el estado de los registros
     # =======================================================
     def dump(self):
         print("\nRegistros:")
