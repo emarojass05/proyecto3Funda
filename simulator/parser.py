@@ -1,5 +1,5 @@
 # ===========================================================
-# parser.py — Carga y parsing de programas RISC-V (ASM)
+# parser.py — Carga y parsing de programas RISC-V (ASM) con soporte de etiquetas
 # ===========================================================
 
 class Instruction:
@@ -10,15 +10,24 @@ class Instruction:
         self.rs1 = None
         self.rs2 = None
         self.imm = None
+        self.label = None
         self.parse_line(text)
 
+    # -----------------------------------------------------------
+    # Función principal de parsing
+    # -----------------------------------------------------------
     def parse_line(self, text):
-        # Eliminar comentarios y espacios extra
+        # Quitar comentarios
         line = text.split("#")[0].strip()
         if not line:
             return
 
-        # Reemplazar comas y limpiar
+        # Si es una etiqueta (termina con :)
+        if line.endswith(":"):
+            self.opcode = line  # se guarda tal cual para que el CPU la reconozca
+            return
+
+        # Reemplazar comas por espacios y limpiar
         line = line.replace(",", " ")
         parts = [p for p in line.split() if p.strip()]
         if len(parts) == 0:
@@ -35,7 +44,7 @@ class Instruction:
                 self.rd, self.rs1, self.rs2 = args
 
         # =======================================================
-        # Formatos I (ADDI, ANDI, ORI)
+        # Formato I (ADDI, ANDI, ORI)
         # =======================================================
         elif self.opcode in ["ADDI", "ANDI", "ORI"]:
             if len(args) == 3:
@@ -43,10 +52,8 @@ class Instruction:
                 try:
                     self.imm = int(imm, 0)
                 except ValueError:
-                    print(f"[WARN] Inmediato inválido en {self.opcode}: '{imm}' → 0")
+                    print(f"[WARN] Inmediato inválido en {self.opcode}: '{imm}' -> 0")
                     self.imm = 0
-            else:
-                print(f"[DEBUG] {self.opcode} tiene argumentos inesperados: {args}")
 
         # =======================================================
         # LW rd, offset(base)
@@ -68,26 +75,71 @@ class Instruction:
                 self.imm = int(offset)
                 self.rs1 = base.replace(")", "")
 
-        elif self.opcode == "HALT":
+        # =======================================================
+        # Instrucciones de salto / control de flujo
+        # =======================================================
+        elif self.opcode in ["BEQ", "BNE"]:
+            # BEQ rs1, rs2, label
+            if len(args) == 3:
+                self.rs1, self.rs2, self.label = args
+        elif self.opcode == "JAL":
+            # JAL rd, label
+            if len(args) == 2:
+                self.rd, self.label = args
+        elif self.opcode == "JALR":
+            # JALR rd, rs1, imm
+            if len(args) == 3:
+                self.rd, self.rs1, imm = args
+                try:
+                    self.imm = int(imm, 0)
+                except ValueError:
+                    self.imm = 0
+
+        # =======================================================
+        # NOP / HALT
+        # =======================================================
+        elif self.opcode in ["NOP", "HALT"]:
             pass
+
         else:
             print(f"[WARN] Instrucción desconocida: {line}")
 
-        # Mostrar depuración
-        print(f"[DEBUG] Parsed: {self.opcode} → rd={self.rd}, rs1={self.rs1}, rs2={self.rs2}, imm={self.imm}")
+        # Depuración opcional
+        print(f"[DEBUG] Parsed: {self.opcode} -> rd={self.rd}, rs1={self.rs1}, rs2={self.rs2}, imm={self.imm}, label={self.label}")
 
+    # -----------------------------------------------------------
+    # Representación legible
+    # -----------------------------------------------------------
     def __repr__(self):
-        return f"{self.opcode} {self.rd or ''} {self.rs1 or ''} {self.rs2 or ''} {self.imm or ''}"
+        parts = [p for p in [self.rd, self.rs1, self.rs2, self.imm, self.label] if p]
+        return f"{self.opcode} {' '.join(map(str, parts))}"
 
 
+# ===========================================================
+# Función de carga de programa desde archivo
+# ===========================================================
 def load_program(filename):
     program = []
+    pending_label = None  # etiqueta detectada pendiente de asignar
+
     with open(filename, "r") as f:
         for line in f:
             line = line.strip()
-            if line and not line.startswith("#"):
-                instr = Instruction(line)
-                if instr.opcode:
-                    program.append(instr)
-    print(f"[INFO] {len(program)} instrucciones cargadas.")
+            if not line or line.startswith("#"):
+                continue
+
+            # Si la línea es una etiqueta
+            if line.endswith(":"):
+                pending_label = line[:-1]  # guardar sin los dos puntos
+                continue
+
+            # Parsear instrucción normal
+            instr = Instruction(line)
+            if pending_label:
+                instr.label = pending_label  # asignar etiqueta previa
+                pending_label = None
+            if instr.opcode:
+                program.append(instr)
+
+    print(f"[INFO] {len(program)} instrucciones cargadas desde {filename}.")
     return program

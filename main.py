@@ -30,13 +30,13 @@ def main():
     print(f"{YELLOW}=== SIMULADOR RISC-V PIPELINED (CLI) ==={RESET}\n")
 
     # Cargar programa desde carpeta examples/
-    program = load_program("examples/program1.asm")
+    program = load_program("examples/program3.asm")
 
     # Inicializar CPU con el programa
     cpu = CPU(program)
 
     ciclo = 1
-    MAX_CICLOS = 30  # 🔸 límite para evitar bucles infinitos
+    MAX_CICLOS = 30  
 
     while not getattr(cpu, "halted", False) and ciclo <= MAX_CICLOS:
         print(f"\n{BLUE}--- Ciclo {ciclo} ---{RESET}\n")

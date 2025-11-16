@@ -1,13 +1,21 @@
 # ===========================================================
-# cpu.py — Simulador RISC-V Pipelined (versión final estable)
+# cpu.py — Simulador RISC-V Pipelined con trazas visuales (mejorado)
 # ===========================================================
 from simulator.memory import Memory
 from simulator.registers import RegisterFile
 from simulator.hazards import HazardUnit
+import os
+
+# Colores para mejor visualización
+C_RESET = "\033[0m"
+C_YELLOW = "\033[93m"
+C_GREEN = "\033[92m"
+C_BLUE = "\033[94m"
+C_RED = "\033[91m"
 
 
 class CPU:
-    def __init__(self, program):
+    def __init__(self, program, program_name="program.asm"):
         self.regs = RegisterFile()
         self.memory = Memory()
         self.hazard_unit = HazardUnit()
@@ -16,6 +24,13 @@ class CPU:
         self.clock = 0
         self.halted = False
         self.instructions = program
+        self.program_name = program_name
+
+        # Métricas
+        self.cycle_count = 0
+        self.mem_accesses = 0
+        self.alu_ops = 0
+        self.branches = 0
 
     # =======================================================
     # Etapa de ejecución (EX)
@@ -25,10 +40,7 @@ class CPU:
             return None
 
         opcode = instr.opcode
-        rd = instr.rd
-        rs1 = instr.rs1
-        rs2 = instr.rs2
-        imm = instr.imm
+        rd, rs1, rs2, imm, label = instr.rd, instr.rs1, instr.rs2, instr.imm, getattr(instr, "label", None)
 
         def val(reg):
             if reg is None:
@@ -39,31 +51,105 @@ class CPU:
 
         v1, v2 = val(rs1), val(rs2)
 
-        if opcode == "ADD":
-            return ("WB", int(rd[1:]), v1 + v2)
-        elif opcode == "SUB":
-            return ("WB", int(rd[1:]), v1 - v2)
-        elif opcode == "AND":
-            return ("WB", int(rd[1:]), v1 & v2)
-        elif opcode == "OR":
-            return ("WB", int(rd[1:]), v1 | v2)
-        elif opcode == "ADDI":
-            return ("WB", int(rd[1:]), v1 + (imm or 0))
+        # ===================================================
+        # Instrucciones aritméticas / lógicas
+        # ===================================================
+        if opcode in ["ADD", "SUB", "AND", "OR", "ADDI", "ANDI", "ORI"]:
+            self.alu_ops += 1
+            result = None
+            if opcode == "ADD":
+                result = v1 + v2
+            elif opcode == "SUB":
+                result = v1 - v2
+            elif opcode == "AND":
+                result = v1 & v2
+            elif opcode == "OR":
+                result = v1 | v2
+            elif opcode == "ADDI":
+                result = v1 + (imm or 0)
+            elif opcode == "ANDI":
+                result = v1 & (imm or 0)
+            elif opcode == "ORI":
+                result = v1 | (imm or 0)
+            print(f"{C_GREEN}-> ALU: {opcode} ejecutada (rd={rd}, resultado={result}){C_RESET}")
+            return ("WB", int(rd[1:]), result)
+
+        # ===================================================
+        # Carga / almacenamiento
+        # ===================================================
         elif opcode == "LW":
+            self.mem_accesses += 1
             addr = v1 + (imm or 0)
             val = self.memory.load(addr)
+            print(f"{C_BLUE}-> LOAD: x{rd[1:]} = Mem[{addr}] = {val}{C_RESET}")
             return ("WB", int(rd[1:]), val)
+
         elif opcode == "SW":
+            self.mem_accesses += 1
             addr = v1 + (imm or 0)
             self.memory.store(addr, v2)
+            print(f"{C_BLUE}-> STORE: Mem[{addr}] = {v2} (desde {rs2}){C_RESET}")
             return None
+
+        # ===================================================
+        # Saltos y control de flujo
+        # ===================================================
+        elif opcode in ["BEQ", "BNE"]:
+            self.branches += 1
+            condition = (v1 == v2) if opcode == "BEQ" else (v1 != v2)
+            if condition:
+                target = self.find_label(label)
+                print(f"{C_YELLOW}-> SALTO TOMADO ({opcode}) hacia {label} (PC={target}){C_RESET}")
+                self.pc = target
+                # flush del pipeline tras salto tomado
+                self.pipeline["IF"] = None
+                self.pipeline["ID"] = None
+            else:
+                print(f"{C_YELLOW}-> SALTO NO tomado ({opcode}){C_RESET}")
+
+        elif opcode == "JAL":
+            self.branches += 1
+            self.regs.write(int(rd[1:]), self.pc)
+            target = self.find_label(label)
+            print(f"{C_YELLOW}-> JAL: salto a {label} (PC={target}), guardado link en {rd}{C_RESET}")
+            self.pc = target
+            self.pipeline["IF"] = None
+            self.pipeline["ID"] = None
+
+        elif opcode == "JALR":
+            self.branches += 1
+            next_pc = v1 + (imm or 0)
+            self.regs.write(int(rd[1:]), self.pc)
+            print(f"{C_YELLOW}-> JALR: salto indirecto a {next_pc}, link en {rd}{C_RESET}")
+            self.pc = next_pc
+            self.pipeline["IF"] = None
+            self.pipeline["ID"] = None
+
+        elif opcode == "NOP":
+            print(f"{C_BLUE}-> NOP ejecutado (sin efecto){C_RESET}")
+            return None
+
+        # ===================================================
+        # HALT — Termina el programa
+        # ===================================================
         elif opcode == "HALT":
             self.halted = True
-            print(" Instrucción HALT detectada: fin del programa.")
+            print(f"{C_RED} Instrucción HALT detectada: fin del programa.{C_RESET}")
             return None
+
         else:
             print(f"[WARN] Instrucción desconocida: {opcode}")
             return None
+
+    # -------------------------------------------------------
+    # Buscar una etiqueta (simulada por nombre en lista)
+    # -------------------------------------------------------
+    def find_label(self, label):
+        for i, instr in enumerate(self.instructions):
+            if instr.raw.strip().endswith(f"{label}:"):
+                return i
+        print(f"[WARN] Etiqueta '{label}' no encontrada.")
+        return self.pc
 
     # =======================================================
     # Ejecución de un ciclo del pipeline
@@ -73,7 +159,8 @@ class CPU:
             return
 
         self.clock += 1
-        print(f"\n--- Ciclo {self.clock} ---")
+        self.cycle_count += 1
+        print(f"\n{C_BLUE}--- Ciclo {self.clock} ---{C_RESET}")
 
         # --- Detectar hazard ---
         hazard = self.hazard_unit.detect_data_hazard(
@@ -84,29 +171,31 @@ class CPU:
         # Manejo de hazard (stall de un ciclo)
         # ===================================================
         if hazard:
-            print(f"[STALL] Burbuja insertada en ciclo {self.clock}")
-            # Inserta una burbuja (solo un ciclo) limpiando EX
+            print(f"{C_YELLOW}[STALL] Burbuja insertada en ciclo {self.clock}{C_RESET}")
             self.pipeline["WB"] = self.pipeline["MEM"]
             self.pipeline["MEM"] = None
             self.pipeline["EX"] = None
-            # No avanzamos ID/IF este ciclo
         else:
-            # --- Avanzar pipeline normal ---
+            # Avanzar pipeline
             self.pipeline["WB"] = self.pipeline["MEM"]
             self.pipeline["MEM"] = self.pipeline["EX"]
             self.pipeline["EX"] = self.pipeline["ID"]
             self.pipeline["ID"] = self.pipeline["IF"]
 
-            # --- Fetch nueva instrucción ---
+            # Fetch
             if self.pc < len(self.instructions):
                 instr = self.instructions[self.pc]
-                self.pipeline["IF"] = instr
+                # Ignorar líneas que son etiquetas
+                if instr.opcode and not instr.opcode.endswith(":"):
+                    self.pipeline["IF"] = instr
+                else:
+                    self.pipeline["IF"] = None
                 self.pc += 1
             else:
                 self.pipeline["IF"] = None
 
         # ===================================================
-        # Etapa EX
+        # EX stage
         # ===================================================
         if self.pipeline["EX"]:
             result = self.execute_stage(self.pipeline["EX"])
@@ -119,15 +208,16 @@ class CPU:
         if isinstance(wb_stage, tuple) and wb_stage[0] == "WB":
             dest, val = wb_stage[1], wb_stage[2]
             self.regs.write(dest, val)
+            print(f"{C_GREEN}-> WB: x{dest} actualizado = {val}{C_RESET}")
 
         # ===================================================
-        # Detección de fin del programa
+        # Fin del programa
         # ===================================================
-        if self.pc >= len(self.instructions) and all(
-            v is None for v in self.pipeline.values()
-        ):
+        if self.pc >= len(self.instructions) and all(v is None for v in self.pipeline.values()):
             self.halted = True
-            print("\n--- Programa finalizado correctamente ---")
+            print(f"\n{C_GREEN}=== PROGRAMA FINALIZADO CORRECTAMENTE ==={C_RESET}")
+            self.print_metrics()
+            self.save_history()
             self.regs.dump()
             return
 
@@ -147,10 +237,31 @@ class CPU:
             elif isinstance(instr, tuple):
                 print(f"{stage:<5}: {instr}")
             else:
-                print(
-                    f"{stage:<5}: {instr.opcode} "
-                    f"{getattr(instr, 'rd', '')} "
-                    f"{getattr(instr, 'rs1', '')} "
-                    f"{getattr(instr, 'rs2', '')} "
-                    f"{getattr(instr, 'imm', '')}"
-                )
+                print(f"{stage:<5}: {instr.opcode} {instr.rd or ''} {instr.rs1 or ''} {instr.rs2 or ''} {instr.imm or ''}")
+
+    # =======================================================
+    # Mostrar métricas
+    # =======================================================
+    def print_metrics(self):
+        print(f"\n{C_YELLOW}--- METRICAS ---{C_RESET}")
+        print(f"Ciclos totales: {self.cycle_count}")
+        print(f"Accesos a memoria: {self.mem_accesses}")
+        print(f"Operaciones ALU: {self.alu_ops}")
+        print(f"Instrucciones de salto: {self.branches}")
+
+    # =======================================================
+    # Guardar historial
+    # =======================================================
+    def save_history(self):
+        history_path = "history.txt"
+        line = f"{self.program_name} - Ciclos: {self.cycle_count}\n"
+
+        if os.path.exists(history_path):
+            with open(history_path, "r") as f:
+                lines = f.readlines()[-9:]
+        else:
+            lines = []
+
+        with open(history_path, "w") as f:
+            f.writelines(lines + [line])
+        print(f"{C_BLUE}[INFO] Ejecucion guardada en {history_path}{C_RESET}")
