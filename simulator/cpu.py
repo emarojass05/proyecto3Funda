@@ -22,8 +22,10 @@ class CPU:
         self.memory = Memory()
         self.hazard_unit = HazardUnit() if hazard_unit_enabled else None
         self.branch_predictor = BranchPredictor() if branch_prediction_enabled else None
+        # pipeline: en cada etapa guardamos la instrucción (o resultado de WB)
         self.pipeline = {"IF": None, "ID": None, "EX": None, "MEM": None, "WB": None}
-        self.pc = 0
+
+        self.pc = 0           # índice dentro de self.instructions
         self.clock = 0
         self.halted = False
         self.instructions = program
@@ -38,6 +40,18 @@ class CPU:
         self.branch_hits = 0
         self.branch_misses = 0
 
+        # ===================================================
+        # Tabla de etiquetas: label -> índice de instrucción
+        #   Se llena a partir de instrucciones que TIENEN
+        #   label pero NO son BEQ / BNE / JAL (es decir,
+        #   instrucciones que están precedidas por "foo:" )
+        # ===================================================
+        self.labels = {}
+        for idx, instr in enumerate(self.instructions):
+            lbl = getattr(instr, "label", None)
+            if lbl and instr.opcode not in ["BEQ", "BNE", "JAL"]:
+                self.labels[lbl] = idx
+
     # =======================================================
     # Obtener valor de registro
     # =======================================================
@@ -46,7 +60,7 @@ class CPU:
             return 0
         if isinstance(reg, str) and reg.startswith("x"):
             return self.regs.read(int(reg[1:]))
-        return 0
+        return self.regs.read(reg)
 
     # =======================================================
     # Etapa de ejecución (EX)
@@ -68,10 +82,10 @@ class CPU:
                 "ADD": v1 + v2,
                 "SUB": v1 - v2,
                 "AND": v1 & v2,
-                "OR": v1 | v2,
+                "OR":  v1 | v2,
                 "ADDI": v1 + (imm or 0),
                 "ANDI": v1 & (imm or 0),
-                "ORI": v1 | (imm or 0)
+                "ORI":  v1 | (imm or 0),
             }[opcode]
             return ("WB", int(rd[1:]), result)
 
@@ -97,9 +111,14 @@ class CPU:
             self.branches += 1
             taken_real = (v1 == v2) if opcode == "BEQ" else (v1 != v2)
 
+            # PC del branch (la instrucción en EX es la que se
+            # fetchéo en un ciclo anterior; aquí usamos pc-1 como
+            # aproximación para la tabla del predictor).
+            branch_pc = max(self.pc - 1, 0)
+
             predicted_taken = False
             if self.branch_predictor:
-                predicted_taken = self.branch_predictor.predict(self.pc)
+                predicted_taken = self.branch_predictor.predict(branch_pc)
 
             # Si el predictor predice salto tomado
             if predicted_taken:
@@ -118,7 +137,7 @@ class CPU:
                     if taken_real:
                         target = self.find_label(label)
                         self.pc = target
-                self.branch_predictor.update(self.pc, taken_real)
+                self.branch_predictor.update(branch_pc, taken_real)
             else:
                 # Sin predictor: salto clásico
                 if taken_real:
@@ -155,13 +174,12 @@ class CPU:
             return None
 
     # -------------------------------------------------------
-    # Buscar etiqueta
+    # Buscar etiqueta (PC destino)
     # -------------------------------------------------------
     def find_label(self, label):
-        for i, instr in enumerate(self.instructions):
-            if instr.raw.strip().startswith(f"{label}:"):
-                return i
-        return self.pc
+        if label is None:
+            return self.pc
+        return self.labels.get(label, self.pc)
 
     # =======================================================
     # Ciclo del pipeline
@@ -176,7 +194,9 @@ class CPU:
 
             hazard = False
             if self.hazard_unit:
-                hazard = self.hazard_unit.detect_data_hazard(self.pipeline["ID"], self.pipeline["EX"])
+                hazard = self.hazard_unit.detect_data_hazard(
+                    self.pipeline["ID"], self.pipeline["EX"]
+                )
 
             # Stalling por riesgo
             if hazard:
@@ -194,6 +214,7 @@ class CPU:
                 # Fetch siguiente instrucción
                 if self.pc < len(self.instructions):
                     instr = self.instructions[self.pc]
+                    # Si es una instrucción real (no etiqueta)
                     if instr.opcode and not instr.opcode.endswith(":"):
                         self.pipeline["IF"] = instr
                     else:
@@ -249,4 +270,51 @@ class CPU:
             "stalls": self.hazard_stalls,
             "branch_hits": self.branch_hits,
             "branch_misses": self.branch_misses,
+        }
+
+    # =======================================================
+    # Snapshot para la GUI (registros, memoria, pipeline)
+    # =======================================================
+    def _pipeline_instr_str(self, obj):
+        """Convierte lo que haya en una etapa del pipeline a texto amigable."""
+        if obj is None:
+            return None
+        # Resultado de WB: ('WB', rd, val)
+        if isinstance(obj, tuple):
+            tag = obj[0]
+            if tag == "WB":
+                dest = obj[1]
+                return f"WB x{dest}"
+            return str(obj)
+
+        # Instrucción normal: usar su línea raw sin comentarios
+        raw = getattr(obj, "raw", None)
+        if isinstance(raw, str):
+            return raw.split("#")[0].strip()
+        return str(obj)
+
+    def get_snapshot(self):
+        """
+        Devuelve toda la info que la GUI necesita para mostrar:
+        - ciclo, pc, halted
+        - registros x0..x31
+        - memoria completa
+        - instrucción en cada etapa del pipeline
+        """
+        regs_dict = {f"x{i}": self.regs.read(i) for i in range(32)}
+        mem_list = list(self.memory.mem)  # lista de enteros
+
+        pipeline_view = {
+            stage: self._pipeline_instr_str(obj)
+            for stage, obj in self.pipeline.items()
+        }
+
+        return {
+            "cycle": self.cycle_count,
+            "pc": self.pc,
+            "halted": self.halted,
+            "registers": regs_dict,
+            "memory": mem_list,
+            "pipeline": pipeline_view,
+            "sim_time": None,  # si luego agregas tiempo simulado lo pones aquí
         }

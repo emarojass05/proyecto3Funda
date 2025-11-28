@@ -1,39 +1,17 @@
-
-# -----------------------------------------------
-# Sección 1 — Prueba básica ALU (sin riesgos)
-# -----------------------------------------------
-ADDI x1, x0, 5       # x1 = 5
-ADDI x2, x0, 10      # x2 = 10
-ADD  x3, x1, x2      # x3 = 15
-SUB  x4, x2, x1      # x4 = 5
-AND  x5, x3, x4      # x5 = 5
-OR   x6, x3, x4      # x6 = 15
-
-# -----------------------------------------------
-# Sección 2 — Prueba de riesgos de datos (RAW)
-# Estas instrucciones dependen inmediatamente de las previas
-# -----------------------------------------------
-ADDI x7, x6, 2       # x7 = x6 + 2   → depende de OR
-ADD  x8, x7, x1      # x8 = x7 + x1  → depende de x7
-SUB  x9, x8, x2      # x9 = x8 - x2  → depende de x8
-AND  x10, x9, x3     # x10 = x9 & x3 → depende de x9
-OR   x11, x10, x4    # x11 = x10 | x4 → depende de x10
-
-# -----------------------------------------------
-# Sección 3 — Prueba de acceso a memoria
-# -----------------------------------------------
-SW   x11, 0(x0)      # Guarda x11 en Mem[0]
-LW   x12, 0(x0)      # Carga x12 = Mem[0]
-
-# -----------------------------------------------
-# Sección 4 — Prueba de saltos condicionales
-# Debe activar predicción si está habilitada
-# -----------------------------------------------
-ADDI x13, x0, 5
-ADDI x14, x0, 5
-BEQ  x13, x14, etiqueta_igual     # Debe cumplirse (salto tomado)
-ADDI x15, x0, 99                  # Debe saltarse si predicción correcta
-JAL  x0, etiqueta_fin
-
-etiqueta_igual:
-ADDI x15, x0, 42
+00300093    # ADDI x1, x0, 3
+00000113    # ADDI x2, x0, 0
+00100193    # ADDI x3, x0, 1
+00200213    # ADDI x4, x0, 2
+00300293    # ADDI x5, x0, 3
+00312023    # SW   x3, 0(x2)
+00412223    # SW   x4, 4(x2)
+00512423    # SW   x5, 8(x2)
+00000313    # ADDI x6, x0, 0
+00000393    # ADDI x7, x0, 0
+0003A403    # LW   x8, 0(x7)
+00830333    # ADD  x6, x6, x8
+00438393    # ADDI x7, x7, 4
+FFF08093    # ADDI x1, x1, -1
+FE0098E3    # BNE  x1, x0, loop
+00612623    # SW   x6, 12(x2)
+0000006F    # JAL  x0, 0  (bucle infinito; puedes cambiarlo por tu encoding de HALT)
