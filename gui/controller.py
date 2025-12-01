@@ -41,13 +41,16 @@ class CPUController:
     def _build_ui(self):
         frame = tk.LabelFrame(
             self.parent,
-            text=f"Procesador {self.title}",
-            padx=8,
+            text=f"⚙️  Procesador {self.title}",
+            padx=10,
             pady=8,
-            bg="#1e1e1e",
-            fg="#ffffff",
-            font=("Segoe UI", 10, "bold"),
+            bg="#222222",
+            fg="#00e5ff",
+            font=("Segoe UI", 11, "bold"),
+            relief=tk.RIDGE,
+            borderwidth=2
         )
+        
         frame.grid(row=0, column=self.column, sticky="nsew", padx=5, pady=5)
         self.parent.columnconfigure(self.column, weight=1)
         self.parent.rowconfigure(0, weight=1)
@@ -109,10 +112,11 @@ class CPUController:
         pipe_frame = tk.LabelFrame(
             frame,
             text="Pipeline (IF → ID → EX → MEM → WB)",
-            padx=4,
-            pady=4,
+            padx=10,
+            pady=10,
             bg="#1e1e1e",
             fg="#f0f0f0",
+            font =("Segoe UI", 10, "bold"),
         )
         pipe_frame.pack(fill=tk.X, pady=(0, 4))
 
@@ -135,10 +139,11 @@ class CPUController:
                 textvariable=var,
                 bg="#0f0f0f",
                 fg="#00ffcc",
-                relief=tk.SUNKEN,
-                anchor="w",
-                font=("Consolas", 9),
-            ).grid(row=0, column=col * 2 + 1, sticky="ew", padx=(0, 4))
+                relief=tk.RIDGE,
+                width=15, height=1,
+                anchor="center",
+                font=("Consolas", 10,"bold"),
+            ).grid(row=0, column=col * 2 + 1, sticky="ew", padx=4, pady=3)
             pipe_frame.columnconfigure(col * 2 + 1, weight=1)
 
         make_stage(0, "IF", self.if_var)
@@ -159,10 +164,15 @@ class CPUController:
         metrics_frame.pack(fill=tk.X, pady=(0, 4))
         self.metrics_txt = tk.Text(
             metrics_frame,
-            height=6,
-            width=60,
+            height=7,
+            width=70,
             bg="#0f0f0f",
             fg="#00ffcc",
+            insertbackground="#00ffcc",
+            relief=tk.FLAT,
+            padx=8, pady=4,
+            highlightthickness=1,
+            highlightbackground="#00bfa5",
             font=("Consolas", 10),
         )
         self.metrics_txt.pack(fill=tk.BOTH, expand=True)
@@ -182,12 +192,15 @@ class CPUController:
         )
         regs_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 2))
         self.reg_txt = tk.Text(
-            regs_frame,
-            height=10,
-            bg="#000000",
-            fg="#ffffff",
-            font=("Consolas", 9),
-        )
+        regs_frame,
+        bg="#000000",
+        fg="#00e676",
+        insertbackground="#00e676",
+        relief=tk.FLAT,
+        font=("Consolas", 9),
+        width=25,
+        padx=6, pady=4
+    )
         self.reg_txt.pack(fill=tk.BOTH, expand=True)
 
         # Memoria
@@ -201,12 +214,15 @@ class CPUController:
         )
         mem_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(2, 0))
         self.mem_txt = tk.Text(
-            mem_frame,
-            height=10,
-            bg="#000000",
-            fg="#ffffff",
-            font=("Consolas", 9),
-        )
+        mem_frame,
+        bg="#000000",
+        fg="#00b0ff",
+        insertbackground="#00b0ff",
+        relief=tk.FLAT,
+        font=("Consolas", 9),
+        width=25,
+        padx=6, pady=4
+)
         self.mem_txt.pack(fill=tk.BOTH, expand=True)
 
     # =======================================================
@@ -451,11 +467,37 @@ class Controller:
         self.btn_load_both.pack(side=tk.RIGHT, padx=5)
 
         # === Área central con los dos procesadores ===
-        main_frame = tk.Frame(root, bg="#1e1e1e")
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
-        main_frame.columnconfigure(0, weight=1)
-        main_frame.columnconfigure(1, weight=1)
-        main_frame.rowconfigure(0, weight=1)
+        # === CONTENEDOR PRINCIPAL CON SCROLL ===
+        container = tk.Frame(root, bg="#1e1e1e")
+        container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # Canvas donde van los procesadores
+        canvas = tk.Canvas(container, bg="#1e1e1e", highlightthickness=0)
+        canvas.pack(side="left", fill="both", expand=True)
+
+        # Scrollbar vertical
+        scroll_y = tk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        scroll_y.pack(side="right", fill="y")
+
+        # Conectar scroll con canvas
+        canvas.configure(yscrollcommand=scroll_y.set)
+
+        # Frame interno donde se ubican los procesadores
+        main_frame = tk.Frame(canvas, bg="#1e1e1e")
+        canvas.create_window((0, 0), window=main_frame, anchor="nw")
+
+        # Asegurar que el scroll se actualice al agregar widgets
+        def _on_frame_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        main_frame.bind("<Configure>", _on_frame_configure)
+
+        main_frame.columnconfigure(0, weight=1,uniform="cols")
+        main_frame.columnconfigure(1, weight=1,uniform="cols")
+        # main_frame.rowconfigure(0, weight=1)
+
+        separator = tk.Frame(main_frame, width=2, bg="#00bfa5")
+        separator.grid(row=0, column=1, sticky="ns", padx=5)
 
         self.cpu_a = CPUController(main_frame, "A", column=0)
         self.cpu_b = CPUController(main_frame, "B", column=1)
@@ -464,17 +506,25 @@ class Controller:
         bottom_controls = tk.Frame(root, bg="#1e1e1e")
         bottom_controls.pack(fill=tk.X, padx=5, pady=(0, 4))
 
+        style_btn = dict(
+        bg="#00bfa5", fg="#000",
+        activebackground="#009688",
+        activeforeground="#fff",
+        font=("Segoe UI", 9, "bold"),
+        relief=tk.FLAT, padx=6, pady=4
+    )
+
         tk.Button(
-            bottom_controls, text="Run (ritmo) ambos", command=self.run_ritmo_ambos
+            bottom_controls, text="Run (ritmo) ambos", command=self.run_ritmo_ambos,**style_btn
         ).pack(side=tk.LEFT, padx=4)
         tk.Button(
-            bottom_controls, text="Run completo ambos", command=self.run_completo_ambos
+            bottom_controls, text="Run completo ambos", command=self.run_completo_ambos,**style_btn
         ).pack(side=tk.LEFT, padx=4)
         tk.Button(
-            bottom_controls, text="Pause ambos", command=self.pause_ambos
+            bottom_controls, text="Pause ambos", command=self.pause_ambos,**style_btn
         ).pack(side=tk.LEFT, padx=4)
         tk.Button(
-            bottom_controls, text="Reset ambos", command=self.reset_ambos
+            bottom_controls, text="Reset ambos", command=self.reset_ambos,**style_btn
         ).pack(side=tk.LEFT, padx=4)
 
         # === Botón de comparación de métricas ===
@@ -489,26 +539,40 @@ class Controller:
             font=("Segoe UI", 10, "bold"),
         ).pack(pady=2)
 
+                # === Botón para guardar resultados ===
+        tk.Button(
+            compare_frame,
+            text="Guardar resultados",
+            command=self.save_results,
+            bg="#00796b",
+            fg="#ffffff",
+            font=("Segoe UI", 10, "bold"),
+        ).pack(pady=2)
+
+
         # === Historial de ejecuciones (últimas 10) ===
         history_frame = tk.LabelFrame(
             root,
-            text="Historial últimas 10 ejecuciones",
-            padx=4,
-            pady=4,
+            text="Historial de ejecuciones (últimas 10)",
+            padx=8,
+            pady=6,
             bg="#1e1e1e",
             fg="#f0f0f0",
+            font=("Segoe UI", 10, "bold"),
         )
         history_frame.pack(fill=tk.BOTH, padx=5, pady=(0, 5))
         self.history_txt = tk.Text(
             history_frame,
-            height=4,
+            height=5,
             bg="#000000",
             fg="#00ffcc",
+            insertbackground="#00ffcc",
+            relief=tk.FLAT,
             font=("Consolas", 9),
+            padx=10,pady=5
         )
         self.history_txt.pack(fill=tk.BOTH, expand=True)
         self.refresh_history()
-
     # -------------------------------------------------------
     # Botones globales
     # -------------------------------------------------------
@@ -565,6 +629,81 @@ class Controller:
         msg = f"=== CPU A ===\n{fmt(mA)}\n\n=== CPU B ===\n{fmt(mB)}"
         messagebox.showinfo("Comparación final", msg)
         self.refresh_history()
+
+
+    
+        # -------------------------------------------------------
+    # Guardar resultados detallados de ambos procesadores
+    # -------------------------------------------------------
+    def save_results(self):
+        if not (self.cpu_a.sim and self.cpu_b.sim):
+            messagebox.showwarning("Guardar resultados", "Carga programas en ambas CPUs antes de guardar.")
+            return
+
+        def format_snapshot(cpu_name, sim):
+            # Obtener métricas
+            m = sim.metrics()
+            regs = sim.cpu.regs  # objeto RegisterFile
+            mem = sim.cpu.memory  # objeto Memory
+
+            # Precisión del predictor
+            total_pred = m["branch_hits"] + m["branch_misses"]
+            if total_pred == 0:
+                prec = "—"
+            else:
+                prec = f"{(m['branch_hits'] / total_pred) * 100:.2f}%"
+
+            # === Sección de métricas ===
+            lines = []
+            lines.append(f"===== {cpu_name} =====")
+            lines.append(f"Programa: {sim.program_path}")
+            lines.append(f"Ciclos totales: {m['cycles']}")
+            lines.append(f"Operaciones ALU: {m['alu_ops']}")
+            lines.append(f"Accesos a memoria: {m['mem_accesses']}")
+            lines.append(f"Saltos ejecutados: {m['branches']}")
+            lines.append(f"Stalls (riesgos): {m['stalls']}")
+            lines.append(f"Predicciones correctas: {m['branch_hits']}")
+            lines.append(f"Predicciones fallidas: {m['branch_misses']}")
+            lines.append(f"Precisión predictor: {prec}\n")
+
+            # === Registros ===
+            lines.append(">> REGISTROS (x0–x31)")
+            for i in range(32):
+                val = regs.read(i)
+                lines.append(f"x{i:02}: {val}")
+            lines.append("")
+
+            # === Memoria ===
+            mem_values = list(mem.mem)
+            non_zero = [(addr, val) for addr, val in enumerate(mem_values) if val != 0]
+
+            if non_zero:
+                lines.append(">> MEMORIA (direcciones con valores distintos de 0)")
+                for addr, val in non_zero:
+                    lines.append(f"{addr:08}: {val}")
+            else:
+                lines.append(">> MEMORIA vacía (todas las celdas en 0)")
+            lines.append("\n")
+            return "\n".join(lines)
+
+        # Texto final del reporte
+        report = (
+            "========================================\n"
+            "📘 RESULTADOS DETALLADOS DE SIMULACIÓN\n"
+            "========================================\n"
+            + format_snapshot("CPU A", self.cpu_a.sim)
+            + format_snapshot("CPU B", self.cpu_b.sim)
+            + "========================================\n\n"
+        )
+
+        try:
+            with open("results.txt", "a", encoding="utf-8") as f:
+                f.write(report)
+            messagebox.showinfo("Guardar resultados", "✅ Resultados guardados (incluyen registros y memoria)")
+            self.refresh_history()
+        except Exception as e:
+            messagebox.showerror("Error al guardar resultados", str(e))
+
 
     # -------------------------------------------------------
     # Historial (history.txt)

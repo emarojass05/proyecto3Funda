@@ -8,6 +8,7 @@ from simulator.cpu import CPU
 class SimulatorAdapter:
     def __init__(self, program_path, hazard_unit_enabled=False, branch_prediction_enabled=False):
         self.program = load_program(program_path)
+        self.program_path = program_path
         self.cpu = CPU(
             self.program,
             program_name=program_path.split("/")[-1],

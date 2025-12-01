@@ -114,7 +114,7 @@ class CPU:
             # PC del branch (la instrucción en EX es la que se
             # fetchéo en un ciclo anterior; aquí usamos pc-1 como
             # aproximación para la tabla del predictor).
-            branch_pc = max(self.pc - 1, 0)
+            branch_pc = self.pc - 1
 
             predicted_taken = False
             if self.branch_predictor:
@@ -122,8 +122,10 @@ class CPU:
 
             # Si el predictor predice salto tomado
             if predicted_taken:
-                target = self.find_label(label)
-                self.pc = target
+                predicted_target = self.find_label(label)
+                self.pc = predicted_target
+            else:
+                pass
 
             # Comparar predicción vs realidad
             if self.branch_predictor:
@@ -135,9 +137,12 @@ class CPU:
                     self.pipeline["IF"] = None
                     self.pipeline["ID"] = None
                     if taken_real:
-                        target = self.find_label(label)
-                        self.pc = target
+                        correct_target = self.find_label(label)
+                        self.pc = correct_target
+                    else: 
+                        self.pc = self.pc
                 self.branch_predictor.update(branch_pc, taken_real)
+                
             else:
                 # Sin predictor: salto clásico
                 if taken_real:
