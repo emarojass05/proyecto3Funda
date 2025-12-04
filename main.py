@@ -3,6 +3,7 @@
 # ===========================================================
 
 import sys
+import os
 
 # ===========================================================
 # Importar CPU y parser (soporta 'simulator' o 'simulacion')
@@ -29,14 +30,22 @@ RESET = "\033[0m"
 def main():
     print(f"{YELLOW}=== SIMULADOR RISC-V PIPELINED (CLI) ==={RESET}\n")
 
-    # Cargar programa desde carpeta examples/
-    program = load_program("examples/program3.asm")
+    # Buscar programa ASM con ruta absoluta
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    asm_path = os.path.join(base_dir, "examples", "program3.asm")
 
-    # Inicializar CPU con el programa
+    if not os.path.exists(asm_path):
+        print(f"{RED}[ERROR]{RESET} No se encontró el archivo: {asm_path}")
+        print(f"{YELLOW}Crea la carpeta 'examples' con un archivo .asm dentro.{RESET}")
+        return
+
+    # Cargar y ejecutar
+    print(f"{BLUE}[INFO]{RESET} Cargando programa desde {asm_path}...\n")
+    program = load_program(asm_path)
     cpu = CPU(program)
 
     ciclo = 1
-    MAX_CICLOS = 30  
+    MAX_CICLOS = 30
 
     while not getattr(cpu, "halted", False) and ciclo <= MAX_CICLOS:
         print(f"\n{BLUE}--- Ciclo {ciclo} ---{RESET}\n")
